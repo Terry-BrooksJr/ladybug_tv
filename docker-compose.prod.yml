@@ -1,0 +1,274 @@
+version: '3.8'
+
+services:
+  # Reflex Frontend/Backend (Production)
+  reflex-app:
+    image: ${DOCKER_REGISTRY}/ladybug-tv-reflex:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.reflex.prod
+      args:
+        - BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+        - VCS_REF=$(git rev-parse --short HEAD)
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - DATABASE_URL=${DATABASE_URL}
+      - API_URL=http://api:8001
+      - REDIS_URL=redis://redis:6379
+      - STREAM_MONITOR_URL=http://stream-monitor:9090
+      - SECRET_KEY=${SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      stream-monitor:
+        condition: service_started
+    networks:
+      - ladybug-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # FastAPI Backend (Production)
+  api:
+    image: ${DOCKER_REGISTRY}/ladybug-tv-api:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend.prod
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=${SECRET_KEY}
+      - API_HOST=0.0.0.0
+      - API_PORT=8001
+      - API_WORKERS=4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ladybug-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Stream Relay Service (Production)
+  stream-relay:
+    image: ${DOCKER_REGISTRY}/ladybug-tv-stream:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.stream.prod
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - STREAM_RELAY_PORT=8080
+      - HLS_SEGMENT_DURATION=6
+      - HLS_PLAYLIST_SIZE=5
+      - FFMPEG_PATH=/usr/bin/ffmpeg
+    volumes:
+      - stream-cache:/tmp/hls
+    networks:
+      - ladybug-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Go Stream Monitor (Production)
+  stream-monitor:
+    image: ${DOCKER_REGISTRY}/ladybug-tv-monitor:${VERSION:-latest}
+    build:
+      context: ./stream_monitor
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+      - "9091:9091"
+    environment:
+      - MONITOR_HOST=0.0.0.0
+      - MONITOR_PORT=9090
+      - METRICS_PORT=9091
+      - CHECK_INTERVAL=30
+      - LOG_LEVEL=info
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - ladybug-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # EPG Service (Production)
+  epg-service:
+    image: ${DOCKER_REGISTRY}/ladybug-tv-epg:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.epg.prod
+    restart: unless-stopped
+    environment:
+      - EPG_UPDATE_INTERVAL=3600
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ladybug-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL Database (Production)
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-ladybug_tv}
+      - POSTGRES_USER=${POSTGRES_USER:-ladybug}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./backups:/backups
+    networks:
+      - ladybug-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ladybug}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis Cache (Production)
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    networks:
+      - ladybug-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      - reflex-app
+      - api
+    networks:
+      - ladybug-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "9092:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - ladybug-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Grafana Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - ladybug-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pgdata:
+  redis-data:
+  stream-cache:
+  prometheus-data:
+  grafana-data:
+  nginx-logs:
+
+networks:
+  ladybug-network:
+    driver: bridge

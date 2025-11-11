@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  reflex-app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.reflex
+    ports:
+      - "3000:3000"
+      - "8000:8000"
+    environment:
+      - API_URL=http://api:8001
+    depends_on:
+      - api
+      - redis
+    volumes:
+      - .:/app
+    networks:
+      - ladybug-network
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://ladybug:password@postgres:5432/ladybug_tv
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=${SECRET_KEY:-change-this-secret-key}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - ladybug-network
+
+  stream-relay:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.stream
+    ports:
+      - "8002:8002"
+    networks:
+      - ladybug-network
+
+  stream-monitor:
+    build:
+      context: ./monitor
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - STREAM_BASE_URL=http://stream-relay:8002
+      - METRICS_PORT=9091
+    ports:
+      - "9091:9091"
+    depends_on:
+      - redis
+      - stream-relay
+    networks:
+      - ladybug-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=ladybug_tv
+      - POSTGRES_USER=ladybug
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - ladybug-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - ladybug-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      - ladybug-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - ladybug-network
+
+volumes:
+  pgdata:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  ladybug-network:
+    driver: bridge

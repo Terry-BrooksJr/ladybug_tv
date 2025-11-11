@@ -1,0 +1,5 @@
+sources:
+  - name: "Primary EPG"
+    url: "http://example.com/epg.xml"
+    format: "xmltv"
+    update_interval: 3600

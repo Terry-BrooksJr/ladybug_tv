@@ -1,0 +1,167 @@
+version: '3.8'
+
+services:
+  # Reflex Frontend/Backend
+  reflex-app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.reflex
+    ports:
+      - "3000:3000"  # Frontend
+      - "8000:8000"  # Reflex backend
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - DATABASE_URL=sqlite:///./reflex.db
+      - API_URL=http://api:8001
+      - REDIS_URL=redis://redis:6379
+      - STREAM_MONITOR_URL=http://stream-monitor:9090
+    depends_on:
+      - api
+      - redis
+      - stream-monitor
+    volumes:
+      - .:/app
+      - reflex-data:/app/.web
+    networks:
+      - ladybug-network
+
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://ladybug:password@postgres:5432/ladybug_tv
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - API_HOST=0.0.0.0
+      - API_PORT=8001
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app/backend
+      - ./logs:/app/logs
+    networks:
+      - ladybug-network
+
+  # Stream Relay Service
+  stream-relay:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.stream
+    ports:
+      - "8080:8080"
+    environment:
+      - STREAM_RELAY_PORT=8080
+      - HLS_SEGMENT_DURATION=6
+      - HLS_PLAYLIST_SIZE=5
+      - FFMPEG_PATH=/usr/bin/ffmpeg
+    volumes:
+      - ./stream_relay:/app/stream_relay
+      - stream-cache:/tmp/hls
+    networks:
+      - ladybug-network
+
+  # Go Stream Monitor
+  stream-monitor:
+    build:
+      context: ./stream_monitor
+      dockerfile: Dockerfile
+    ports:
+      - "9090:9090"  # Main service
+      - "9091:9091"  # Metrics
+    environment:
+      - MONITOR_HOST=0.0.0.0
+      - MONITOR_PORT=9090
+      - METRICS_PORT=9091
+      - CHECK_INTERVAL=30
+      - LOG_LEVEL=info
+    volumes:
+      - ./config:/app/config
+    networks:
+      - ladybug-network
+
+  # EPG Service
+  epg-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.epg
+    environment:
+      - EPG_UPDATE_INTERVAL=3600
+      - DATABASE_URL=postgresql://ladybug:password@postgres:5432/ladybug_tv
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./epg_service:/app/epg_service
+      - ./logs:/app/logs
+    networks:
+      - ladybug-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=ladybug_tv
+      - POSTGRES_USER=ladybug
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ladybug-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ladybug"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - ladybug-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Prometheus (optional for monitoring)
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9092:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - ladybug-network
+    profiles:
+      - monitoring
+
+volumes:
+  pgdata:
+  redis-data:
+  reflex-data:
+  stream-cache:
+  prometheus-data:
+
+networks:
+  ladybug-network:
+    driver: bridge

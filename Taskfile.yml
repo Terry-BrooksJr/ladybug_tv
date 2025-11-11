@@ -1,0 +1,371 @@
+# https://taskfile.dev
+# Ladybug TV - Task Runner
+# Usage: task <command>
+# Run 'task --list' to see all available tasks
+
+version: '3'
+
+vars:
+  APP_NAME: ladybug_tv
+  PYTHON: python3
+  VENV_PATH: .venv
+  REFLEX: reflex
+
+tasks:
+  # ============================================================================
+  # DEFAULT TASK
+  # ============================================================================
+
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list-all
+    silent: true
+
+  # ============================================================================
+  # DEVELOPMENT TASKS
+  # ============================================================================
+
+  dev:
+    desc: Start development server
+    cmds:
+      - "{{.REFLEX}} run"
+
+  dev:debug:
+    desc: Start development server with debug logging
+    cmds:
+      - "{{.REFLEX}} run --loglevel debug"
+
+  dev:frontend:
+    desc: Start frontend only
+    cmds:
+      - "{{.REFLEX}} run --frontend-only"
+
+  dev:backend:
+    desc: Start backend only
+    cmds:
+      - "{{.REFLEX}} run --backend-only"
+
+  # ============================================================================
+  # DATABASE TASKS
+  # ============================================================================
+
+  db:init:
+    desc: Initialize database
+    cmds:
+      - "{{.REFLEX}} db init"
+
+  db:migrate:
+    desc: Run database migrations
+    cmds:
+      - "{{.REFLEX}} db migrate"
+
+  db:makemigrations:
+    desc: Create new migration
+    cmds:
+      - "{{.REFLEX}} db makemigrations {{.CLI_ARGS}}"
+
+  db:reset:
+    desc: Reset database (deletes all data)
+    prompt: This will delete all data. Continue?
+    cmds:
+      - rm -rf alembic/
+      - rm -f reflex.db
+      - "{{.REFLEX}} db init"
+
+  # ============================================================================
+  # BUILD & EXPORT TASKS
+  # ============================================================================
+
+  build:
+    desc: Build application
+    cmds:
+      - "{{.REFLEX}} export --no-zip"
+
+  build:prod:
+    desc: Build production application
+    cmds:
+      - "{{.REFLEX}} export"
+
+  export:
+    desc: Export static site
+    cmds:
+      - "{{.REFLEX}} export --frontend-only"
+
+  # ============================================================================
+  # DEPENDENCY MANAGEMENT TASKS
+  # ============================================================================
+
+  install:
+    desc: Install dependencies
+    cmds:
+      - uv sync
+
+  install:dev:
+    desc: Install dev dependencies
+    cmds:
+      - uv sync --dev
+
+  update:
+    desc: Update dependencies
+    cmds:
+      - uv lock --upgrade
+      - uv sync
+
+  add:
+    desc: Add a new package
+    summary: |
+      Add a new package to the project
+
+      Usage: task add -- <package-name>
+      Example: task add -- httpx
+    cmds:
+      - uv add {{.CLI_ARGS}}
+
+  remove:
+    desc: Remove a package
+    summary: |
+      Remove a package from the project
+
+      Usage: task remove -- <package-name>
+      Example: task remove -- httpx
+    cmds:
+      - uv remove {{.CLI_ARGS}}
+
+  # ============================================================================
+  # TESTING TASKS
+  # ============================================================================
+
+  test:
+    desc: Run tests
+    cmds:
+      - pytest tests/ -v
+
+  test:watch:
+    desc: Run tests in watch mode
+    cmds:
+      - pytest-watch tests/
+
+  test:cov:
+    desc: Run tests with coverage
+    cmds:
+      - pytest tests/ --cov={{.APP_NAME}} --cov-report=html --cov-report=term
+      - echo "Coverage report generated in htmlcov/"
+
+  # ============================================================================
+  # CODE QUALITY TASKS
+  # ============================================================================
+
+  lint:
+    desc: Run linters
+    cmds:
+      - ruff check {{.APP_NAME}}/
+
+  lint:fix:
+    desc: Run linters with auto-fix
+    cmds:
+      - ruff check --fix {{.APP_NAME}}/
+
+  format:
+    desc: Format code
+    cmds:
+      - ruff format {{.APP_NAME}}/
+
+  format:check:
+    desc: Check code formatting
+    cmds:
+      - ruff format --check {{.APP_NAME}}/
+
+  typecheck:
+    desc: Run type checker
+    cmds:
+      - mypy {{.APP_NAME}}/
+
+  quality:
+    desc: Run all quality checks
+    cmds:
+      - task: format:check
+      - task: lint
+      - task: typecheck
+
+  # ============================================================================
+  # CLEANUP TASKS
+  # ============================================================================
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf .web/
+      - rm -rf __pycache__/
+      - find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+      - rm -rf .pytest_cache/
+      - rm -rf .coverage
+      - rm -rf htmlcov/
+      - rm -rf dist/
+      - rm -rf *.egg-info
+      - echo "Cleanup complete"
+
+  clean:all:
+    desc: Clean all artifacts including database
+    prompt: This will delete the virtual environment and database. Continue?
+    cmds:
+      - task: clean
+      - rm -rf {{.VENV_PATH}}/
+      - rm -rf alembic/
+      - rm -f reflex.db
+      - rm -f uv.lock
+      - echo "Full cleanup complete"
+
+  # ============================================================================
+  # DEPLOYMENT TASKS
+  # ============================================================================
+
+  deploy:docker:build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t {{.APP_NAME}}:latest .
+
+  deploy:docker:run:
+    desc: Run Docker container
+    cmds:
+      - docker run -p 3000:3000 -p 8000:8000 {{.APP_NAME}}:latest
+
+  deploy:check:
+    desc: Run pre-deployment checks
+    cmds:
+      - echo "🔍 Running pre-deployment checks..."
+      - task: format:check
+      - task: lint
+      - task: typecheck
+      - task: test
+      - task: build
+      - echo "✅ All pre-deployment checks passed!"
+
+  # ============================================================================
+  # UTILITY TASKS
+  # ============================================================================
+
+  logs:
+    desc: Tail application logs
+    cmds:
+      - tail -f .web/reflex.log
+
+  shell:
+    desc: Start Python shell
+    cmds:
+      - "{{.PYTHON}}"
+
+  info:
+    desc: Show application information
+    cmds:
+      - echo "📱 Application Information:"
+      - echo "   Python:" $({{.PYTHON}} --version)
+      - echo "   Reflex:" $({{.REFLEX}} --version 2>/dev/null || echo "not installed")
+      - echo "   Virtual env:" ${VIRTUAL_ENV:-"Not activated"}
+      - echo "   Working directory:" $(pwd)
+    silent: true
+
+  # ============================================================================
+  # SETUP TASKS
+  # ============================================================================
+
+  setup:
+    desc: Initial project setup
+    cmds:
+      - echo "🚀 Setting up Ladybug TV..."
+      - task: install
+      - task: db:init
+      - echo "✅ Setup complete! Run 'task dev' to start the development server."
+
+  setup:dev:
+    desc: Setup development environment with all tools
+    cmds:
+      - echo "🔧 Setting up development environment..."
+      - task: install:dev
+      - task: db:init
+      - echo "✅ Development environment ready!"
+
+  # ============================================================================
+  # DOCKER COMMANDS
+  # ============================================================================
+
+  docker:up:
+    desc: Start all services with Docker Compose
+    cmds:
+      - docker-compose up -d
+
+  docker:down:
+    desc: Stop all services
+    cmds:
+      - docker-compose down
+
+  docker:logs:
+    desc: View logs from all services
+    cmds:
+      - docker-compose logs -f {{.CLI_ARGS}}
+
+  docker:ps:
+    desc: List running services
+    cmds:
+      - docker-compose ps
+
+  docker:rebuild:
+    desc: Rebuild and restart all services
+    cmds:
+      - docker-compose up -d --build
+
+  # ============================================================================
+  # STREAM MONITOR COMMANDS (Go)
+  # ============================================================================
+
+  monitor:build:
+    desc: Build stream monitor binary
+    dir: stream_monitor
+    cmds:
+      - go build -o bin/stream-monitor ./cmd
+
+  monitor:run:
+    desc: Run stream monitor locally
+    dir: stream_monitor
+    cmds:
+      - go run ./cmd/main.go
+
+  monitor:test:
+    desc: Run stream monitor tests
+    dir: stream_monitor
+    cmds:
+      - go test -v ./...
+
+  monitor:deps:
+    desc: Download Go dependencies
+    dir: stream_monitor
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  # ============================================================================
+  # PRODUCTION COMMANDS
+  # ============================================================================
+
+  prod:up:
+    desc: Start production services
+    cmds:
+      - docker-compose -f docker-compose.prod.yml up -d
+
+  prod:down:
+    desc: Stop production services
+    cmds:
+      - docker-compose -f docker-compose.prod.yml down
+
+  prod:logs:
+    desc: View production logs
+    cmds:
+      - docker-compose -f docker-compose.prod.yml logs -f {{.CLI_ARGS}}
+
+  prod:deploy:
+    desc: Deploy to production
+    cmds:
+      - echo "🚀 Deploying to production..."
+      - task: deploy:check
+      - task: prod:up
+      - echo "✅ Production deployment complete!"
