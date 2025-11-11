@@ -13,3 +13,10 @@ wheels/
 
 # Virtual environments
 .venv
+PROJECT_STRUCTURE.md
+SETUP_COMPLETE.md
+FILES_CREATED.txt
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md
