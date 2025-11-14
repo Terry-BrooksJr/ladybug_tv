@@ -20,3 +20,6 @@ FILES_CREATED.txt
 
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
+.envrc
+.ruff_cache/
+base.Dockerfile

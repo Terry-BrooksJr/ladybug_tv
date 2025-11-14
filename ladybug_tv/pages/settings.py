@@ -1,5 +1,7 @@
 """Settings page"""
+
 import reflex as rx
+
 
 def settings() -> rx.Component:
     """Settings page"""

@@ -1,5 +1,7 @@
 """Login page"""
+
 import reflex as rx
+
 
 def login() -> rx.Component:
     """Login page"""

@@ -2,7 +2,7 @@
 # Ladybug TV - Task Runner
 # Usage: task <command>
 # Run 'task --list' to see all available tasks
-
+---
 version: '3'
 
 vars:
@@ -10,6 +10,8 @@ vars:
   PYTHON: python3
   VENV_PATH: .venv
   REFLEX: reflex
+  DOPPLER_TOKEN:
+
 
 tasks:
   # ============================================================================
@@ -29,22 +31,22 @@ tasks:
   dev:
     desc: Start development server
     cmds:
-      - "{{.REFLEX}} run"
+      - "doppler run -- reflex run"
 
   dev:debug:
     desc: Start development server with debug logging
     cmds:
-      - "{{.REFLEX}} run --loglevel debug"
+      - "doppler run doppler  -t {{.DOPPLER_TOKEN}}    run -- run --loglevel debug"
 
   dev:frontend:
     desc: Start frontend only
     cmds:
-      - "{{.REFLEX}} run --frontend-only"
+      - "doppler  -t {{.DOPPLER_TOKEN}}    run -- run --frontend-only"
 
   dev:backend:
     desc: Start backend only
     cmds:
-      - "{{.REFLEX}} run --backend-only"
+      - "doppler  -t {{.DOPPLER_TOKEN}}    run -- run --backend-only"
 
   # ============================================================================
   # DATABASE TASKS
@@ -53,17 +55,17 @@ tasks:
   db:init:
     desc: Initialize database
     cmds:
-      - "{{.REFLEX}} db init"
+      - "doppler  -t {{.DOPPLER_TOKEN}}    run -- db init"
 
   db:migrate:
     desc: Run database migrations
     cmds:
-      - "{{.REFLEX}} db migrate"
+      - "doppler  -t {{.DOPPLER_TOKEN}}    run -- db migrate"
 
   db:makemigrations:
     desc: Create new migration
     cmds:
-      - "{{.REFLEX}} db makemigrations {{.CLI_ARGS}}"
+      - "doppler  -t {{.DOPPLER_TOKEN}}    run -- db makemigrations {{.CLI_ARGS}}"
 
   db:reset:
     desc: Reset database (deletes all data)
@@ -71,7 +73,7 @@ tasks:
     cmds:
       - rm -rf alembic/
       - rm -f reflex.db
-      - "{{.REFLEX}} db init"
+      - "doppler  -t {{.DOPPLER_TOKEN}}    run -- db init"
 
   # ============================================================================
   # BUILD & EXPORT TASKS
@@ -80,17 +82,17 @@ tasks:
   build:
     desc: Build application
     cmds:
-      - "{{.REFLEX}} export --no-zip"
+      - "doppler  -t {{.DOPPLER_TOKEN}}    run -- export --no-zip"
 
   build:prod:
     desc: Build production application
     cmds:
-      - "{{.REFLEX}} export"
+      - "doppler  -t {{.DOPPLER_TOKEN}}    run -- export"
 
   export:
     desc: Export static site
     cmds:
-      - "{{.REFLEX}} export --frontend-only"
+      - "doppler  -t {{.DOPPLER_TOKEN}}    run -- export --frontend-only"
 
   # ============================================================================
   # DEPENDENCY MANAGEMENT TASKS
@@ -159,27 +161,28 @@ tasks:
   lint:
     desc: Run linters
     cmds:
-      - ruff check {{.APP_NAME}}/
+      - .venv/bin/ruff check {{.APP_NAME}}/
 
   lint:fix:
     desc: Run linters with auto-fix
     cmds:
-      - ruff check --fix {{.APP_NAME}}/
+      - .venv/bin/ruff check --fix {{.APP_NAME}}/
 
   format:
     desc: Format code
     cmds:
-      - ruff format {{.APP_NAME}}/
+      - .venv/bin/ruff format {{.APP_NAME}}/
 
   format:check:
     desc: Check code formatting
+    dir: '{{.TASKFILE_DIR}}'
     cmds:
-      - ruff format --check {{.APP_NAME}}/
+      - .venv/bin/ruff format --check {{.APP_NAME}}/
 
   typecheck:
     desc: Run type checker
     cmds:
-      - mypy {{.APP_NAME}}/
+      - .venv/bin/mypy {{.APP_NAME}}/
 
   quality:
     desc: Run all quality checks

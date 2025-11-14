@@ -1,5 +1,7 @@
 """Navigation bar component"""
+
 import reflex as rx
+
 
 def navbar() -> rx.Component:
     """Top navigation bar"""

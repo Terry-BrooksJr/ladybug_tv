@@ -1,5 +1,7 @@
 """Channel list component"""
+
 import reflex as rx
+
 
 def channel_list_item(channel: dict) -> rx.Component:
     """Individual channel in the list"""

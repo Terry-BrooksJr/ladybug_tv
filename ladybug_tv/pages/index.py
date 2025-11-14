@@ -1,9 +1,11 @@
 """Main TV viewer page"""
+
 import reflex as rx
 from ladybug_tv.components.navbar import navbar
 from ladybug_tv.components.video_player import video_player
 from ladybug_tv.components.channel_list import channel_list_item
 from ladybug_tv.state.app_state import IPTVState
+
 
 def sidebar() -> rx.Component:
     """Channel list sidebar"""
@@ -42,6 +44,7 @@ def sidebar() -> rx.Component:
         display=rx.cond(IPTVState.sidebar_open, "block", "none"),
     )
 
+
 def video_area() -> rx.Component:
     """Main video player area"""
     return rx.vstack(
@@ -61,6 +64,7 @@ def video_area() -> rx.Component:
         ),
         width="100%",
     )
+
 
 def index() -> rx.Component:
     """Main TV viewer page"""

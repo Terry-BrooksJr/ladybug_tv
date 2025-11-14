@@ -1,5 +1,7 @@
 """EPG display components"""
+
 import reflex as rx
+
 
 def epg_current_program(program: dict) -> rx.Component:
     """Display current program info"""

@@ -1,12 +1,14 @@
 """Custom HLS video player component"""
+
 import reflex as rx
+
 
 class VideoPlayer(rx.Component):
     """Custom HLS video player component"""
-    
+
     library = "video.js"
     tag = "VideoPlayer"
-    
+
     # Props
     stream_url: rx.Var[str]
     autoplay: rx.Var[bool] = False

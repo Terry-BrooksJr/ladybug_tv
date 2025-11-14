@@ -29,14 +29,32 @@ class LadybugTVState(rx.State):
     # Computed vars for safe dictionary access
     @rx.var
     def current_channel_name(self) -> str:
+        """Returns the name of the currently selected channel.
+
+        If no channel is selected, returns a default message.
+        """
         return self.current_channel.get("name", "No channel selected")
 
     @rx.var
     def current_program_title(self) -> str:
+        """Returns the title of the currently airing program.
+
+        If no program information is available, returns a default message.
+
+        Returns:
+            str: The title of the current program or a default message.
+        """
         return self.current_program.get("title", "No program info")
 
     @rx.var
     def current_program_description(self) -> str:
+        """Returns the description of the currently airing program.
+
+        If no description is available, returns an empty string.
+
+        Returns:
+            str: The description of the current program or an empty string.
+        """
         return self.current_program.get("description", "")
 
     @rx.var
@@ -51,7 +69,7 @@ class LadybugTVState(rx.State):
     def has_stream(self) -> bool:
         """Return True when a stream URL is ready"""
         return bool(self.current_stream_url)
-    
+
     def toggle_sidebar(self):
         """Toggle sidebar visibility"""
         self.sidebar_open = not self.sidebar_open
@@ -64,41 +82,41 @@ class LadybugTVState(rx.State):
         self.channels = response.json()
         self.filtered_channels = self.channels
         self.is_loading = False
-    
+
     def play_channel(self, channel_id: str):
         """Switch to a different channel"""
         # Get stream URL from backend
         response = httpx.get(f"http://api:8000/stream/{channel_id}")
         self.current_stream_url = response.json()["stream_url"]
-        self.current_channel = next(
-            (ch for ch in self.channels if ch["id"] == channel_id), 
-            {}
-        )
+        channel = next((ch for ch in self.channels if ch["id"] == channel_id), None)
+        if channel is None:
+            raise ValueError(f"Channel with id '{channel_id}' not found.")
+        self.current_channel = channel
         self.load_epg(channel_id)
-    
+
     def load_epg(self, channel_id: str):
         """Load EPG data for current channel"""
         response = httpx.get(f"http://api:8000/epg/{channel_id}")
         epg_data = response.json()
         self.current_program = epg_data["current"]
         self.upcoming_programs = epg_data["upcoming"]
-    
+
     def toggle_favorite(self, channel_id: str):
         """Add/remove channel from favorites"""
         if channel_id in self.favorites:
             self.favorites.remove(channel_id)
         else:
             self.favorites.append(channel_id)
-    
+
     def search_channels(self, query: str):
         """Filter channels by search query"""
         if not query:
             self.filtered_channels = self.channels
         else:
             self.filtered_channels = [
-                ch for ch in self.channels 
-                if query.lower() in ch["name"].lower()
+                ch for ch in self.channels if query.lower() in ch["name"].lower()
             ]
+
 
 def channel_list_item(channel: dict) -> rx.Component:
     """Individual channel in the list"""
@@ -118,11 +136,7 @@ def channel_list_item(channel: dict) -> rx.Component:
         rx.spacer(),
         rx.icon(
             tag="star",
-            color=rx.cond(
-                LadybugTVState.favorites.contains(channel["id"]),
-                "yellow",
-                "gray"
-            ),
+            color=rx.cond(LadybugTVState.favorites.contains(channel["id"]), "yellow", "gray"),
             cursor="pointer",
             on_click=LadybugTVState.toggle_favorite(channel["id"]),
         ),
@@ -132,6 +146,7 @@ def channel_list_item(channel: dict) -> rx.Component:
         on_click=LadybugTVState.play_channel(channel["id"]),
         _hover={"background": "#f5f5f5"},
     )
+
 
 def sidebar() -> rx.Component:
     """Channel list sidebar"""
@@ -170,6 +185,7 @@ def sidebar() -> rx.Component:
         display=rx.cond(LadybugTVState.sidebar_open, "block", "none"),
     )
 
+
 def video_player() -> rx.Component:
     """Render the HTML5 video element or a placeholder when no channel is selected."""
     return rx.cond(
@@ -202,6 +218,7 @@ def video_player() -> rx.Component:
             background="black",
         ),
     )
+
 
 def video_area() -> rx.Component:
     """Main video player area"""
@@ -261,6 +278,7 @@ def video_area() -> rx.Component:
         spacing="0",
     )
 
+
 def index() -> rx.Component:
     """Main app layout"""
     return rx.box(
@@ -273,6 +291,7 @@ def index() -> rx.Component:
         width="100%",
         height="100vh",
     )
+
 
 # Create app
 app = rx.App()
